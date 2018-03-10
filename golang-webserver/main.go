@@ -1,11 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
+	_ "github.com/mattn/go-sqlite3"
 	lane "gopkg.in/oleiade/lane.v1"
 )
 
@@ -26,12 +29,38 @@ type WorkPacket struct {
 }
 
 var (
-	queue *lane.Queue
+	queue     *lane.Queue
+	db        *sql.DB
+	startTime time.Time
 )
 
+func tes() {
+
+	stat, err := db.Prepare("INSERT INTO people (firstname, lastname) VALUES (?, ?)")
+	if err != nil {
+		log.Fatal(err)
+	}
+	stat.Exec("Nic", "Raboy")
+}
+
 func init() {
+	db, _ = sql.Open("sqlite3", "./pictures.db")
 	queue = lane.NewQueue()
 	LoadWorkQueue(queue)
+	//SetupDatabase()
+}
+
+func SetupDatabase() {
+	_, err := db.Exec("DROP TABLE IF EXISTS jobs;")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stat, _ := db.Prepare(`CREATE TABLE jobs (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					filename NOT NULL,
+					detected INTEGER DEFAULT NULL`)
+	stat.Exec()
 }
 
 func LoadWorkQueue(queue *lane.Queue) {
@@ -69,17 +98,30 @@ func PostResult(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Must Provide filename and detected params", http.StatusBadRequest)
 		return
 	}
+
+	stat, err := db.Prepare("INSERT INTO pictures (filename, detected) VALUES (?, ?)")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stat.Exec(filename, detected)
+
+	w.Write([]byte("OK"))
 }
 
 func GetProgress(w http.ResponseWriter, req *http.Request) {
 	//Get all results from database
 	var pictures []PictureResult
-	rows := []string{"Result", "resluts"}
 
-	for _, picture := range rows {
+	rows, _ := db.Query("SELECT filename, detected FROM pictures")
+
+	var filename string
+	var detected int
+	for rows.Next() {
+		rows.Scan(&filename, &detected)
 		pictures = append(pictures, PictureResult{
-			Filename: picture, //todo
-			Detected: 1,       //todo
+			Filename: filename,
+			Detected: detected,
 		})
 	}
 
